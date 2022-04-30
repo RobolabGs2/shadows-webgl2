@@ -1,0 +1,16 @@
+{
+  "name": "shadows",
+  "version": "0.0.1",
+  "description": "Home work for computer graphics course",
+  "scripts": {
+    "start": "parcel index.html",
+    "build": "parcel build index.html --public-url ./"
+  },
+  "author": "Ivanchenko V.V.",
+  "license": "MIT",
+  "devDependencies": {
+    "@parcel/transformer-glsl": "^2.4.0",
+    "parcel": "^2.4.0",
+    "typescript": "^4.6.3"
+  }
+}
