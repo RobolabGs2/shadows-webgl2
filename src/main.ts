@@ -3,74 +3,100 @@ import { downloadImages } from "./utils"
 import { ProgramWrapper, TexturesManager } from "./webgl"
 import { StyleSheetTree, WindowsManager } from "./web/windows"
 
+type Vector<N extends number, T = number> = N extends 0 ? never[] : {
+    0: T;
+    length: N;
+} & ReadonlyArray<T>;
+
+namespace Vector {
+    export function Cross(a: Vector<3>, b: Vector<3>): Vector<3> {
+        return [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0]
+        ];
+    }
+    export function Substract(a: Vector<3>, b: Vector<3>): Vector<3> {
+        return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    }
+    export function Normilize(v: Vector<3>, eps = 0.00000001): Vector<3> {
+        const l = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        if (l < eps)
+            return [0, 0, 0];
+        return [v[0] / l, v[1] / l, v[2] / l];
+    }
+}
+
 class Matrix {
+    readonly m: Float32Array;
     constructor(
-        readonly m = new Float32Array([
+        m: Vector<16> = [
             0, 0, 0, 0,
             0, 0, 0, 0,
             0, 0, 0, 0,
             0, 0, 0, 0,
-        ])
+        ]
     ) {
         if (m.length !== 4 * 4) {
             throw new Error("Matrix should be 4x4")
         }
+        this.m = new Float32Array(m);
     }
     static Identity(): Matrix {
-        return new Matrix(new Float32Array([
+        return new Matrix([
             1, 0, 0, 0,
             0, 1, 0, 0,
             0, 0, 1, 0,
             0, 0, 0, 1,
-        ]))
+        ])
     }
     static Scale(x: number, y = x, z = x) {
-        return new Matrix(new Float32Array([
+        return new Matrix([
             x, 0, 0, 0,
             0, y, 0, 0,
             0, 0, z, 0,
             0, 0, 0, 1,
-        ]))
+        ])
     }
     static RotateX(angle: number): Matrix {
         const c = Math.cos(angle);
         const s = Math.sin(angle);
-        return new Matrix(new Float32Array([
+        return new Matrix([
             +1, +0, +0, +0,
             +0, +c, +s, +0,
             +0, -s, +c, +0,
             +0, +0, +0, +1,
-        ]))
+        ])
     }
     static RotateY(angle: number): Matrix {
         const c = Math.cos(angle);
         const s = Math.sin(angle);
-        return new Matrix(new Float32Array([
+        return new Matrix([
             +c, +0, -s, +0,
             +0, +1, +0, +0,
             +s, +0, +c, +0,
             +0, +0, +0, +1,
-        ]))
+        ])
     }
     static RotateZ(angle: number): Matrix {
         const c = Math.cos(angle);
         const s = Math.sin(angle);
-        return new Matrix(new Float32Array([
+        return new Matrix([
             +c, +s, +0, +0,
             -s, +c, +0, +0,
             +0, +0, +1, +0,
             +0, +0, +0, +1,
-        ]))
+        ])
     }
     static Perspective(fieldOfView: number, aspect: number, nearZ: number, farZ: number) {
         const f = Math.tan(0.5 * (Math.PI * - fieldOfView));
         const rangeInv = 1.0 / (nearZ - farZ);
-        return new Matrix(new Float32Array([
+        return new Matrix([
             f / aspect, 0, 0, 0,
             0, f, 0, 0,
             0, 0, (nearZ + farZ) * rangeInv, -1,
             0, 0, nearZ * farZ * rangeInv * 2, 0
-        ]));
+        ]);
     }
     static Ortographic(
         minX: number, maxX: number,
@@ -80,22 +106,33 @@ class Matrix {
         const w = maxX - minX;
         const h = maxY - minY;
         const d = maxZ - minZ;
-        return new Matrix(new Float32Array([
+        return new Matrix([
             2 / w, 0, 0, (minX + maxX) / w,
             0, 2 / h, 0, (minY + maxY) / h,
             0, 0, 2 / d, (minZ + maxZ) / d,
             0, 0, 0, 1,
-        ]))
+        ])
+    }
+    static LookAt(from: Vector<3>, to: Vector<3>, up: Vector<3>): Matrix {
+        const zAxis = Vector.Normilize(Vector.Substract(from, to));
+        const xAxis = Vector.Normilize(Vector.Cross(up, zAxis));
+        const yAxis = Vector.Normilize(Vector.Cross(zAxis, xAxis));
+        return new Matrix([
+            xAxis[0], xAxis[1], xAxis[2], 0,
+            yAxis[0], yAxis[1], yAxis[2], 0,
+            zAxis[0], zAxis[1], zAxis[2], 0,
+            from[0], from[1], from[2], 1,
+        ]);
     }
     static Move(dx: number, dy: number, dz: number): Matrix {
-        return new Matrix(new Float32Array([
+        return new Matrix([
             1, 0, 0, 0,
             0, 1, 0, 0,
             0, 0, 1, 0,
             dx, dy, dz, 1,
-        ]))
+        ])
     }
-    static Multiply(a: Matrix, b: Matrix, c: Matrix = new Matrix(new Float32Array(16))) {
+    static Multiply(a: Matrix, b: Matrix, c: Matrix = new Matrix()) {
         const a00 = a.m[0 * 4 + 0];
         const a01 = a.m[0 * 4 + 1];
         const a02 = a.m[0 * 4 + 2];
@@ -148,6 +185,94 @@ class Matrix {
     }
     multiply(another: Matrix) {
         return Matrix.Multiply(this, another, this);
+    }
+    position(): Vector<3> {
+        return [this.m[12], this.m[13], this.m[14]];
+    }
+    inverse(): Matrix {
+        const m = this.m;
+        const m00 = m[0 * 4 + 0];
+        const m01 = m[0 * 4 + 1];
+        const m02 = m[0 * 4 + 2];
+        const m03 = m[0 * 4 + 3];
+        const m10 = m[1 * 4 + 0];
+        const m11 = m[1 * 4 + 1];
+        const m12 = m[1 * 4 + 2];
+        const m13 = m[1 * 4 + 3];
+        const m20 = m[2 * 4 + 0];
+        const m21 = m[2 * 4 + 1];
+        const m22 = m[2 * 4 + 2];
+        const m23 = m[2 * 4 + 3];
+        const m30 = m[3 * 4 + 0];
+        const m31 = m[3 * 4 + 1];
+        const m32 = m[3 * 4 + 2];
+        const m33 = m[3 * 4 + 3];
+        const tmp_0 = m22 * m33;
+        const tmp_1 = m32 * m23;
+        const tmp_2 = m12 * m33;
+        const tmp_3 = m32 * m13;
+        const tmp_4 = m12 * m23;
+        const tmp_5 = m22 * m13;
+        const tmp_6 = m02 * m33;
+        const tmp_7 = m32 * m03;
+        const tmp_8 = m02 * m23;
+        const tmp_9 = m22 * m03;
+        const tmp_10 = m02 * m13;
+        const tmp_11 = m12 * m03;
+        const tmp_12 = m20 * m31;
+        const tmp_13 = m30 * m21;
+        const tmp_14 = m10 * m31;
+        const tmp_15 = m30 * m11;
+        const tmp_16 = m10 * m21;
+        const tmp_17 = m20 * m11;
+        const tmp_18 = m00 * m31;
+        const tmp_19 = m30 * m01;
+        const tmp_20 = m00 * m21;
+        const tmp_21 = m20 * m01;
+        const tmp_22 = m00 * m11;
+        const tmp_23 = m10 * m01;
+
+        const t0 = (tmp_0 * m11 + tmp_3 * m21 + tmp_4 * m31) -
+            (tmp_1 * m11 + tmp_2 * m21 + tmp_5 * m31);
+        const t1 = (tmp_1 * m01 + tmp_6 * m21 + tmp_9 * m31) -
+            (tmp_0 * m01 + tmp_7 * m21 + tmp_8 * m31);
+        const t2 = (tmp_2 * m01 + tmp_7 * m11 + tmp_10 * m31) -
+            (tmp_3 * m01 + tmp_6 * m11 + tmp_11 * m31);
+        const t3 = (tmp_5 * m01 + tmp_8 * m11 + tmp_11 * m21) -
+            (tmp_4 * m01 + tmp_9 * m11 + tmp_10 * m21);
+
+        const d = 1.0 / (m00 * t0 + m10 * t1 + m20 * t2 + m30 * t3);
+
+        return new Matrix([
+            d * t0,
+            d * t1,
+            d * t2,
+            d * t3,
+            d * ((tmp_1 * m10 + tmp_2 * m20 + tmp_5 * m30) -
+                (tmp_0 * m10 + tmp_3 * m20 + tmp_4 * m30)),
+            d * ((tmp_0 * m00 + tmp_7 * m20 + tmp_8 * m30) -
+                (tmp_1 * m00 + tmp_6 * m20 + tmp_9 * m30)),
+            d * ((tmp_3 * m00 + tmp_6 * m10 + tmp_11 * m30) -
+                (tmp_2 * m00 + tmp_7 * m10 + tmp_10 * m30)),
+            d * ((tmp_4 * m00 + tmp_9 * m10 + tmp_10 * m20) -
+                (tmp_5 * m00 + tmp_8 * m10 + tmp_11 * m20)),
+            d * ((tmp_12 * m13 + tmp_15 * m23 + tmp_16 * m33) -
+                (tmp_13 * m13 + tmp_14 * m23 + tmp_17 * m33)),
+            d * ((tmp_13 * m03 + tmp_18 * m23 + tmp_21 * m33) -
+                (tmp_12 * m03 + tmp_19 * m23 + tmp_20 * m33)),
+            d * ((tmp_14 * m03 + tmp_19 * m13 + tmp_22 * m33) -
+                (tmp_15 * m03 + tmp_18 * m13 + tmp_23 * m33)),
+            d * ((tmp_17 * m03 + tmp_20 * m13 + tmp_23 * m23) -
+                (tmp_16 * m03 + tmp_21 * m13 + tmp_22 * m23)),
+            d * ((tmp_14 * m22 + tmp_17 * m32 + tmp_13 * m12) -
+                (tmp_16 * m32 + tmp_12 * m12 + tmp_15 * m22)),
+            d * ((tmp_20 * m32 + tmp_12 * m02 + tmp_19 * m22) -
+                (tmp_18 * m22 + tmp_21 * m32 + tmp_13 * m02)),
+            d * ((tmp_18 * m12 + tmp_23 * m32 + tmp_15 * m02) -
+                (tmp_22 * m32 + tmp_14 * m02 + tmp_19 * m12)),
+            d * ((tmp_22 * m22 + tmp_16 * m02 + tmp_21 * m12) -
+                (tmp_20 * m12 + tmp_23 * m22 + tmp_17 * m02)),
+        ]);
     }
 }
 
@@ -242,6 +367,34 @@ const makeSimpleDrawProgram = (gl: WebGL2RenderingContext) => {
         gl.useProgram(null);
     }
 }
+import spriteVert from "./sprite.vert"
+
+const makeSpriteProgram = (gl: WebGL2RenderingContext) => {
+    const { program, uniforms, attributes } = new ProgramWrapper(
+        gl,
+        { vertex: spriteVert, fragment: fillColorFrag },
+        { color: "u_color", transform: "u_transform", projection: "u_projection", size: "u_size" },
+        { position: "a_position" }
+    )
+    const positionBuffer = gl.createBuffer();
+    return (projection: Matrix, position: Vector<3>, [r, g, b, a = 1]: [number, number, number, number?], size = 16) => {
+        gl.useProgram(program);
+
+        gl.uniform4f(uniforms.color, r, g, b, a);
+        gl.uniformMatrix4fv(uniforms.transform, false, Matrix.Move(position[0], position[1], position[2]).m);
+        gl.uniformMatrix4fv(uniforms.projection, false, projection.m);
+        gl.uniform1f(uniforms.size, size);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.vertexAttribPointer(attributes.position, 4, gl.FLOAT, false, 0, 0);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([...position, 0]), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(attributes.position);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+        gl.drawArrays(gl.POINTS, 0, 1);
+        gl.useProgram(null);
+    }
+}
 
 downloadImages({}).then(images => {
     // const styleSheet = document.querySelector("style")!.sheet!
@@ -253,32 +406,39 @@ downloadImages({}).then(images => {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
     const simpleDraw = makeSimpleDrawProgram(gl);
+    const drawSprite = makeSpriteProgram(gl);
     const cube = Model.Cube(1);
-    cube.transform.multiply(Matrix.Move(0.5, 0.5, -2));
+    cube.transform.multiply(Matrix.Move(1.5, 0.5, -2));
     const textures = new TexturesManager(gl, images)
     // const windows = new WindowsManager(HTML.CreateElement("div", (el) => document.body.appendChild(el)), new StyleSheetTree(styleSheet))
     // windows.CreateInfoWindow("Shadow demo", HTML.CreateElement("article", HTML.SetText("TODO")))
     let lastTick = 0
     let frameId = -1;
-    const ortographic = Matrix.Ortographic(-1, 1, -1, 1, -100, 0);
+    const ortographic = Matrix.Ortographic(-1, 1, -1, 1, -100, 1);
     const halfWidth = canvas.width / 2;
     const halfHeight = canvas.height / 2;
     const aspect = halfWidth / gl.drawingBufferHeight;
     const projectionPerspective = Matrix.Perspective(Math.PI / 2, aspect, 0.1, 100);
+    console.log(cube.transform.position())
+    let time = 0;
     const draw = (currentTick: number) => {
+        const cameraPos: Vector<3> = [1 * Math.cos(time), 1 * Math.sin(time), -0.9];
+        const camera = Matrix.LookAt(cameraPos, cube.transform.position(), [0, 1, 0])
         const dt = (currentTick - lastTick) / 1000
+        time += dt;
         lastTick = currentTick
+        gl.viewport(0, 0, halfWidth, canvas.height);
         gl.clearColor(0.1, 0.1, 0.1, 1.0)
         gl.clearDepth(1.0)
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-        gl.viewport(0, 0, halfWidth, canvas.height);
-        simpleDraw(projectionPerspective, cube, [1, 0, 0])
+        simpleDraw(Matrix.Multiply(projectionPerspective, camera.inverse()), cube, [1, 0, 0])
         gl.viewport(halfWidth, 0, halfWidth, canvas.height);
         simpleDraw(ortographic, cube, [1, 0, 0]);
+        drawSprite(ortographic, cameraPos, [0, 0, 1]);
         cube.transform
             .multiply(Matrix.RotateX(dt))
-            .multiply(Matrix.RotateY(3 * dt))
-            .multiply(Matrix.RotateZ(dt))
+            // .multiply(Matrix.RotateY(3 * dt))
+            // .multiply(Matrix.RotateZ(dt))
         frameId = requestAnimationFrame(draw)
     }
     frameId = requestAnimationFrame(draw)
