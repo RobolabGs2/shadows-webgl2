@@ -8,7 +8,8 @@ export class Model {
         gl: WebGL2RenderingContext,
         vertexes: [number, number, number][] | Float32Array,
         triangles: [number, number, number][] | Uint16Array,
-        public transform: Matrix = Matrix.Identity()
+        public transform: Matrix = Matrix.Identity(),
+        normals?: number[]
     ) {
         if (vertexes instanceof Float32Array) {
             this.vertexes = vertexes;
@@ -24,16 +25,22 @@ export class Model {
             this.indices = new Uint16Array(triangles.flatMap(x => x));
         }
         this.vao = gl.createVertexArray()!;
-        const vertexBuffer = gl.createBuffer()!;
-        const indicesBuffer = gl.createBuffer()!;
+
         gl.bindVertexArray(this.vao);
-        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
         gl.bufferData(gl.ARRAY_BUFFER, this.vertexes, gl.STATIC_DRAW);
         gl.enableVertexAttribArray(0);
         gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
-        gl.bindBuffer(gl.ARRAY_BUFFER, null);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indicesBuffer);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.indices, gl.STATIC_DRAW);
+
+        if (normals) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(1);
+            gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
         gl.bindVertexArray(null);
     }
     static Cube(gl: WebGL2RenderingContext, a: number = 1): Model {
@@ -43,27 +50,63 @@ export class Model {
             [1, 1, 1],
             [1, -1, 1],
             [1, -1, -1],
+
             [-1, 1, 1],
             [-1, 1, -1],
             [-1, -1, -1],
             [-1, -1, 1],
+
             [-1, 1, 1],
             [1, 1, 1],
             [1, 1, -1],
             [-1, 1, -1],
+
             [-1, -1, -1],
             [1, -1, -1],
             [1, -1, 1],
             [-1, -1, 1],
+
             [1, 1, 1],
             [-1, 1, 1],
             [-1, -1, 1],
             [1, -1, 1],
+
             [-1, 1, -1],
             [1, 1, -1],
             [1, -1, -1],
             [-1, -1, -1],
         ].map(coords => coords.map(c => c * h) as [number, number, number]);
+        const normals = [
+            [1, 0, 0],
+            [1, 0, 0],
+            [1, 0, 0],
+            [1, 0, 0],
+
+            [-1, 0, 0],
+            [-1, 0, 0],
+            [-1, 0, 0],
+            [-1, 0, 0],
+
+            [0, 1, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+            [0, 1, 0],
+
+            [0, -1, 0],
+            [0, -1, 0],
+            [0, -1, 0],
+            [0, -1, 0],
+
+            [0, 0, 1],
+            [0, 0, 1],
+            [0, 0, 1],
+            [0, 0, 1],
+
+            [0, 0, -1],
+            [0, 0, -1],
+            [0, 0, -1],
+            [0, 0, -1],
+        ]
         const triangles: [number, number, number][] = [
             [0, 1, 2],
             [0, 2, 3],
@@ -78,7 +121,7 @@ export class Model {
             [20, 21, 22],
             [20, 22, 23],
         ]
-        return new Model(gl, vertexes, triangles)
+        return new Model(gl, vertexes, triangles, Matrix.Identity(), normals.flat())
     }
     static Camera(gl: WebGL2RenderingContext, scale: number = 1): Model {
         const positions = [

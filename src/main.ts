@@ -1,68 +1,18 @@
 import { HTML } from "./web/html"
-import { downloadImages } from "./utils"
+import { downloadImages, mapRecord } from "./utils"
 import { ProgramWrapper, TexturesManager } from "./webgl"
 import { StyleSheetTree, WindowsManager } from "./web/windows"
-
-
-import simpleVert from "./simple.vert"
-import fillColorFrag from "./fill_color.frag"
-
-const makeSimpleDrawProgram = (gl: WebGL2RenderingContext) => {
-    const { program, uniforms, attributes } = new ProgramWrapper(
-        gl,
-        { vertex: simpleVert, fragment: fillColorFrag },
-        { color: "u_color", transform: "u_transform", projection: "u_projection" },
-        { position: "a_position" }
-    )
-    return (projection: Matrix, model: Model, [r, g, b, a = 1]: [number, number, number, number?]) => {
-        gl.useProgram(program);
-
-        gl.uniform4f(uniforms.color, r, g, b, a);
-        gl.uniformMatrix4fv(uniforms.transform, false, model.transform.m);
-        gl.uniformMatrix4fv(uniforms.projection, false, projection.m);
-
-        gl.bindVertexArray(model.vao);
-
-        gl.drawElements(gl.TRIANGLES, model.indices.length, gl.UNSIGNED_SHORT, 0);
-        gl.uniform4f(uniforms.color, r, 1, b, a);
-        gl.drawElements(gl.LINES, model.indices.length, gl.UNSIGNED_SHORT, 0);
-        gl.bindVertexArray(null);
-        gl.useProgram(null);
-    }
-}
-import spriteVert from "./sprite.vert"
 import { Matrix, Vector } from "./geometry"
 import { Model } from "./model"
+import * as Drawers from "./drawers"
 
-const makeSpriteProgram = (gl: WebGL2RenderingContext) => {
-    const { program, uniforms, attributes } = new ProgramWrapper(
-        gl,
-        { vertex: spriteVert, fragment: fillColorFrag },
-        { color: "u_color", transform: "u_transform", projection: "u_projection", size: "u_size" },
-        { position: "a_position" }
-    )
-    const positionBuffer = gl.createBuffer();
-    return (projection: Matrix, position: Vector<3>, [r, g, b, a = 1]: [number, number, number, number?], size = 16) => {
-        gl.useProgram(program);
-
-        gl.uniform4f(uniforms.color, r, g, b, a);
-        gl.uniformMatrix4fv(uniforms.transform, false, Matrix.Identity().m);
-        gl.uniformMatrix4fv(uniforms.projection, false, projection.m);
-        gl.uniform1f(uniforms.size, size);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-        gl.vertexAttribPointer(attributes.position, 4, gl.FLOAT, false, 0, 0);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([...position, 1]), gl.STATIC_DRAW);
-        gl.enableVertexAttribArray(attributes.position);
-        gl.bindBuffer(gl.ARRAY_BUFFER, null);
-
-        gl.drawArrays(gl.POINTS, 0, 1);
-        gl.useProgram(null);
-    }
+type UnwrapMakerFunctions<T> = {
+    [K in keyof T]: T[K] extends (...args: any) => any ? ReturnType<T[K]> : unknown
 }
 
 downloadImages({}).then(images => {
     // const styleSheet = document.querySelector("style")!.sheet!
+
     const canvas = document.querySelector("canvas")!
     canvas.width = canvas.clientWidth
     canvas.height = canvas.clientHeight
@@ -70,9 +20,10 @@ downloadImages({}).then(images => {
     const gl = canvas.getContext("webgl2")!
     gl.enable(gl.BLEND);
     gl.enable(gl.DEPTH_TEST);
+    gl.enable(gl.CULL_FACE);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-    const simpleDraw = makeSimpleDrawProgram(gl);
-    const drawSprite = makeSpriteProgram(gl);
+
+    const drawer = mapRecord(Drawers, maker => maker(gl)) as UnwrapMakerFunctions<typeof Drawers>;
     const keyboard = new Keyboard({
         "KeyW": "forward",
         "KeyS": "backward",
@@ -107,16 +58,22 @@ downloadImages({}).then(images => {
     const ortographic = Matrix.Ortographic(-ortoWidth, ortoWidth, -ortoWidth / aspect, ortoWidth / aspect, 1000, -1000);
     const projectionPerspective = Matrix.Perspective(-0.9 * Math.PI, aspect, 0.1, 100);
     let time = 0;
-    const camera = Matrix.Move(-2.5, 2.5, -2).multiply(Matrix.RotateY(-Math.PI/2)).multiply(Matrix.RotateX(-Math.PI/6));
+    const camera = Matrix.Move(-2.5, 2.5, -2).multiply(Matrix.RotateY(-Math.PI / 2)).multiply(Matrix.RotateX(-Math.PI / 6));
     const cameraUpDown = Matrix.LookAt([0, 10, 0], [0, 0, 0], [0, 0, -1])
     const cameraCube = Model.Camera(gl, 0.1);
     cameraCube.transform = camera;
+    const light: [number, number, number] = [1.5, 3, -2];
     const items = [
         {
-            mesh: cube,
+            // mesh: cube,
+            draw: (projection: Matrix) => drawer.lightingPoint(projection, cube, light),
         },
         {
-            mesh: cameraCube,
+            // mesh: cameraCube,
+            draw: (projection: Matrix) => drawer.simple(projection, cameraCube, [1, 0, 1]),
+        },
+        {
+            draw: (projection: Matrix) => drawer.sprite(projection, light, [0.5, 0.5, 0])
         }
     ]
     const viewports: {
@@ -168,7 +125,7 @@ downloadImages({}).then(images => {
             gl.viewport(...viewport.viewport);
             const projection = Matrix.Multiply(viewport.projection, viewport.camera.inverse());
             items.forEach(item => {
-                simpleDraw(projection, item.mesh, [1, 0, 0])
+                item.draw(projection)
             })
         })
         frameId = requestAnimationFrame(draw)
