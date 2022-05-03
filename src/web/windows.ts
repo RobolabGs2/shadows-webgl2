@@ -1,5 +1,5 @@
 import { HTML } from "./html";
-import { Point, Size } from "./geometry";
+import { Point, Size } from "./geometry2D";
 
 export interface Ticker {
 	Tick(dt: number): void;
