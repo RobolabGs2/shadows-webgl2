@@ -11,6 +11,12 @@ type UnwrapMakerFunctions<T> = {
     [K in keyof T]: T[K] extends (...args: any) => any ? ReturnType<T[K]> : unknown
 }
 
+enum Layers {
+    Main = 1,
+    Debug = 2,
+    All = 255,
+}
+
 downloadImages({}).then(images => {
     // const styleSheet = document.querySelector("style")!.sheet!
 
@@ -73,13 +79,14 @@ downloadImages({}).then(images => {
     const aspect = halfWidth / halfHeight;
     const ortoWidth = 10
     const ortographic = Matrix.Ortographic(-ortoWidth, ortoWidth, -ortoWidth / aspect, ortoWidth / aspect, 1000, -1000);
-    const projectionPerspective = Matrix.Perspective(-0.9 * Math.PI, aspect, 0.1, 100);
+    const projectionPerspective = Matrix.Perspective(-0.9 * Math.PI, aspect, 0.1, 15);
     let time = 0;
     const camera = Matrix.Move(-3.5, 2.5, 0).multiply(Matrix.RotateY(-Math.PI / 2)).multiply(Matrix.RotateX(-Math.PI / 6));
     const cameraUpDown = Matrix.LookAt([0, 10, 0], [0, 0, 0], [0, 0, -1])
     const cameraCube = Model.Camera(gl, 0.1, [1, 1, 1]);
     cameraCube.transform = camera;
     const light: [number, number, number] = [1.5, 3, -2];
+    const cameraView = Model.Cube(gl, 2, { diffuseColor: [0, 0, 0], specular: 1, specularColor: [0, 0, 0], debugColor: [1, 1, 1] })
     const items = [
         {
             draw: (projection: Matrix) => drawer.lightingPoint(projection, cube1, light, camera.position()),
@@ -92,7 +99,13 @@ downloadImages({}).then(images => {
         },
         {
             // mesh: cameraCube,
-            draw: (projection: Matrix) => drawer.simple(projection, cameraCube),
+            draw: (projection: Matrix) => {
+                drawer.simple(projection, cameraCube);
+                Matrix.Multiply(camera, projectionPerspective.inverse(), cameraView.transform);
+                drawer.simple(projection, cameraView);
+            },
+            layers: Layers.Debug,
+
         },
         {
             draw: (projection: Matrix) => drawer.sprite(projection, light, [0.5, 0.5, 0])
@@ -102,26 +115,31 @@ downloadImages({}).then(images => {
         viewport: [number, number, number, number],
         projection: Matrix,
         camera: Matrix,
+        layers: Layers,
     }[] = [
             {
                 viewport: [0, 0, halfWidth, halfHeight],
                 projection: projectionPerspective,
                 camera: cameraUpDown,
+                layers: Layers.All,
             },
             {
                 viewport: [halfWidth, 0, halfWidth, halfHeight],
                 projection: projectionPerspective,
                 camera: camera,
+                layers: Layers.Main,
             },
             {
                 viewport: [0, halfHeight, halfWidth, halfHeight],
                 projection: ortographic,
                 camera: cameraUpDown,
+                layers: Layers.All,
             },
             {
                 viewport: [halfWidth, halfHeight, halfWidth, halfHeight],
                 projection: ortographic,
                 camera: Matrix.Identity(),
+                layers: Layers.All,
             },
         ]
     const draw = (currentTick: number) => {
@@ -151,7 +169,8 @@ downloadImages({}).then(images => {
             gl.viewport(...viewport.viewport);
             const projection = Matrix.Multiply(viewport.projection, viewport.camera.inverse());
             items.forEach(item => {
-                item.draw(projection)
+                if ((item.layers || Layers.All) & viewport.layers)
+                    item.draw(projection)
             })
         })
         frameId = requestAnimationFrame(draw)
