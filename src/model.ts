@@ -1,4 +1,11 @@
-import { Matrix } from "./geometry";
+import { Matrix, Vector } from "./geometry";
+
+export type Material = {
+    diffuseColor: Vector<3>;
+    specularColor: Vector<3>;
+    specular: number;
+    debugColor?: Vector<3>;
+}
 
 export class Model {
     public vertexes: Float32Array
@@ -8,6 +15,7 @@ export class Model {
         gl: WebGL2RenderingContext,
         vertexes: [number, number, number][] | Float32Array,
         triangles: [number, number, number][] | Uint16Array,
+        public material: Material,
         public transform: Matrix = Matrix.Identity(),
         normals?: number[]
     ) {
@@ -43,7 +51,7 @@ export class Model {
         gl.bindBuffer(gl.ARRAY_BUFFER, null);
         gl.bindVertexArray(null);
     }
-    static Cube(gl: WebGL2RenderingContext, a: number = 1): Model {
+    static Cube(gl: WebGL2RenderingContext, a: number = 1, material: Material): Model {
         const h = a / 2;
         const vertexes = [
             [1, 1, -1],
@@ -121,9 +129,9 @@ export class Model {
             [20, 21, 22],
             [20, 22, 23],
         ]
-        return new Model(gl, vertexes, triangles, Matrix.Identity(), normals.flat())
+        return new Model(gl, vertexes, triangles, material, Matrix.Identity(), normals.flat())
     }
-    static Camera(gl: WebGL2RenderingContext, scale: number = 1): Model {
+    static Camera(gl: WebGL2RenderingContext, scale: number = 1, color: Vector<3>): Model {
         const positions = [
             -1, -1, 1,  // cube vertices
             1, -1, 1,
@@ -164,6 +172,11 @@ export class Model {
             vertexes4D[i * 4 + 1] = positions[i * 3 + 1];
             vertexes4D[i * 4 + 2] = positions[i * 3 + 2];
         }
-        return new Model(gl, vertexes4D, new Uint16Array(indices))
+        return new Model(gl, vertexes4D, new Uint16Array(indices), {
+            diffuseColor: [0, 0, 0],
+            specular: 0,
+            specularColor: [0, 0, 0],
+            debugColor: color,
+        })
     }
 }

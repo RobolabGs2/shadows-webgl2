@@ -5,6 +5,7 @@ import { StyleSheetTree, WindowsManager } from "./web/windows"
 import { Matrix, Vector } from "./geometry"
 import { Model } from "./model"
 import * as Drawers from "./drawers"
+import { Keyboard } from "./input"
 
 type UnwrapMakerFunctions<T> = {
     [K in keyof T]: T[K] extends (...args: any) => any ? ReturnType<T[K]> : unknown
@@ -44,8 +45,24 @@ downloadImages({}).then(images => {
         const { turnDown, turnLeft, turnRight, turnUp } = keyboard.keys;
         return Vector.Normilize([+turnUp - +turnDown, +turnRight - +turnLeft, 0], length)
     }
-    const cube = Model.Cube(gl, 1);
-    cube.transform.multiply(Matrix.Move(1.5, 0.5, -2));
+    const cube1 = Model.Cube(gl, 1, {
+        diffuseColor: [0, 1, 0],
+        specularColor: [1, 1, 1],
+        specular: 100,
+    });
+    const cube2 = Model.Cube(gl, 1, {
+        diffuseColor: [0, 0, 1],
+        specularColor: [1, 1, 1],
+        specular: 100,
+    });
+    const cube3 = Model.Cube(gl, 1, {
+        diffuseColor: [1, 0, 0],
+        specularColor: [1, 1, 1],
+        specular: 100,
+    });
+    cube1.transform.multiply(Matrix.Move(1.5, 0.5, -2));
+    cube2.transform.multiply(Matrix.Move(1.5, 0.5, 2));
+    cube3.transform.multiply(Matrix.Move(1.5, 0.5, 0));
     const textures = new TexturesManager(gl, images)
     // const windows = new WindowsManager(HTML.CreateElement("div", (el) => document.body.appendChild(el)), new StyleSheetTree(styleSheet))
     // windows.CreateInfoWindow("Shadow demo", HTML.CreateElement("article", HTML.SetText("TODO")))
@@ -58,19 +75,24 @@ downloadImages({}).then(images => {
     const ortographic = Matrix.Ortographic(-ortoWidth, ortoWidth, -ortoWidth / aspect, ortoWidth / aspect, 1000, -1000);
     const projectionPerspective = Matrix.Perspective(-0.9 * Math.PI, aspect, 0.1, 100);
     let time = 0;
-    const camera = Matrix.Move(-2.5, 2.5, -2).multiply(Matrix.RotateY(-Math.PI / 2)).multiply(Matrix.RotateX(-Math.PI / 6));
+    const camera = Matrix.Move(-3.5, 2.5, 0).multiply(Matrix.RotateY(-Math.PI / 2)).multiply(Matrix.RotateX(-Math.PI / 6));
     const cameraUpDown = Matrix.LookAt([0, 10, 0], [0, 0, 0], [0, 0, -1])
-    const cameraCube = Model.Camera(gl, 0.1);
+    const cameraCube = Model.Camera(gl, 0.1, [1, 1, 1]);
     cameraCube.transform = camera;
     const light: [number, number, number] = [1.5, 3, -2];
     const items = [
         {
-            // mesh: cube,
-            draw: (projection: Matrix) => drawer.lightingPoint(projection, cube, light),
+            draw: (projection: Matrix) => drawer.lightingPoint(projection, cube1, light, camera.position()),
+        },
+        {
+            draw: (projection: Matrix) => drawer.lightingPoint(projection, cube2, light, camera.position()),
+        },
+        {
+            draw: (projection: Matrix) => drawer.lightingPoint(projection, cube3, light, camera.position()),
         },
         {
             // mesh: cameraCube,
-            draw: (projection: Matrix) => drawer.simple(projection, cameraCube, [1, 0, 1]),
+            draw: (projection: Matrix) => drawer.simple(projection, cameraCube),
         },
         {
             draw: (projection: Matrix) => drawer.sprite(projection, light, [0.5, 0.5, 0])
@@ -106,9 +128,10 @@ downloadImages({}).then(images => {
         const dt = (currentTick - lastTick) / 1000
         time += dt;
         lastTick = currentTick
-        const cubePos = cube.transform.position();
-        light[0] = cubePos[0] + 2.5 * Math.cos(time / 2);
-        light[2] = cubePos[2] + 2.5 * Math.sin(time / 2);
+        const cubePos = cube3.transform.position();
+        light[0] = cubePos[0] + 1 * Math.cos(time / 2);
+        light[1] = cubePos[1] + 0.5 * Math.cos(time / 2);
+        light[2] = cubePos[2] + 1 * Math.sin(time / 2);
         if (keyboard.totalPressed > 0) {
             const [dx, dy, dz] = moveDirection(dt)
             camera.multiply(Matrix.Move(dx, dy, dz));
@@ -116,7 +139,7 @@ downloadImages({}).then(images => {
             camera.multiply(Matrix.RotateX(rx).multiply(Matrix.RotateY(ry)))
             console.log(camera.position())
         }
-        cube.transform
+        cube1.transform
         // .multiply(Matrix.RotateX(dt))
         // .multiply(Matrix.RotateY(3 * dt))
         // .multiply(Matrix.RotateZ(dt))
@@ -135,36 +158,3 @@ downloadImages({}).then(images => {
     }
     frameId = requestAnimationFrame(draw)
 })
-
-interface EventsSource {
-    addEventListener(event: 'keyup' | 'keydown', listener: (ev: KeyboardEvent) => void): void
-}
-
-class Keyboard<T extends string> {
-    totalPressed = 0
-    keys: Record<T, boolean>
-    constructor(mapping: Record<string, T>, parent: EventsSource = window) {
-        const keys = Object.values(mapping);
-        this.keys = Object.fromEntries(keys.map(key => ([key, false]))) as Record<T, boolean>;
-        parent.addEventListener('keydown', (ev) => {
-            const action = mapping[ev.code];
-            if (action) {
-                ev.preventDefault();
-                if (!this.keys[action]) {
-                    this.keys[action] = true;
-                    ++this.totalPressed;
-                }
-            }
-        })
-        parent.addEventListener('keyup', (ev) => {
-            const action = mapping[ev.code];
-            if (action) {
-                ev.preventDefault();
-                if (this.keys[action]) {
-                    this.keys[action] = false;
-                    --this.totalPressed;
-                }
-            }
-        })
-    }
-}
