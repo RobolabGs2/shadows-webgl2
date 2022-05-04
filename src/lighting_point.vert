@@ -13,7 +13,6 @@ void main() {
     vec4 position = u_transform * a_position;
     gl_Position = u_projection * position;
 
-    surfaceToLight = u_lightPosition - vec3(position);
-    vec4 tmp = u_transform * vec4(a_normal, 1.);
-    normal = normalize(tmp.xyz / tmp.w);
+    surfaceToLight = u_lightPosition - vec3(position.xyz / position.w);
+    normal = mat3(u_transform) * a_normal;
 }

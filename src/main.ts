@@ -106,6 +106,9 @@ downloadImages({}).then(images => {
         const dt = (currentTick - lastTick) / 1000
         time += dt;
         lastTick = currentTick
+        const cubePos = cube.transform.position();
+        light[0] = cubePos[0] + 2.5 * Math.cos(time / 2);
+        light[2] = cubePos[2] + 2.5 * Math.sin(time / 2);
         if (keyboard.totalPressed > 0) {
             const [dx, dy, dz] = moveDirection(dt)
             camera.multiply(Matrix.Move(dx, dy, dz));
@@ -114,8 +117,8 @@ downloadImages({}).then(images => {
             console.log(camera.position())
         }
         cube.transform
-            // .multiply(Matrix.RotateX(dt))
-            .multiply(Matrix.RotateY(3 * dt))
+        // .multiply(Matrix.RotateX(dt))
+        // .multiply(Matrix.RotateY(3 * dt))
         // .multiply(Matrix.RotateZ(dt))
 
         gl.clearColor(0.1, 0.1, 0.1, 1.0)
