@@ -84,7 +84,7 @@ export class Matrix {
         ])
     }
     static Perspective(fieldOfView: number, aspect: number, nearZ: number, farZ: number) {
-        const f = Math.tan(0.5 * (Math.PI * - fieldOfView));
+        const f = Math.tan(0.5*(Math.PI - fieldOfView));
         const rangeInv = 1.0 / (nearZ - farZ);
         return new Matrix([
             f / aspect, 0, 0, 0,

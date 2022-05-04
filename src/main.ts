@@ -17,6 +17,15 @@ enum Layers {
     All = 255,
 }
 
+export class Projector {
+    public projection = Matrix.Perspective(this.angle, 1, 0.1, this.maxDistance)
+    constructor(
+        public transform: Matrix,
+        public angle: number,
+        public maxDistance: number,
+    ) { }
+}
+
 downloadImages({}).then(images => {
     // const styleSheet = document.querySelector("style")!.sheet!
 
@@ -79,7 +88,7 @@ downloadImages({}).then(images => {
     const aspect = halfWidth / halfHeight;
     const ortoWidth = 10
     const ortographic = Matrix.Ortographic(-ortoWidth, ortoWidth, -ortoWidth / aspect, ortoWidth / aspect, 1000, -1000);
-    const projectionPerspective = Matrix.Perspective(-0.9 * Math.PI, aspect, 0.1, 15);
+    const projectionPerspective = Matrix.Perspective(Math.PI / 4, aspect, 0.1, 15);
     let time = 0;
     const camera = Matrix.Move(-3.5, 2.5, 0).multiply(Matrix.RotateY(-Math.PI / 2)).multiply(Matrix.RotateX(-Math.PI / 6));
     const cameraUpDown = Matrix.LookAt([0, 10, 0], [0, 0, 0], [0, 0, -1])
@@ -87,16 +96,14 @@ downloadImages({}).then(images => {
     cameraCube.transform = camera;
     const light: [number, number, number] = [1.5, 3, -2];
     const cameraView = Model.Cube(gl, 2, { diffuseColor: [0, 0, 0], specular: 1, specularColor: [0, 0, 0], debugColor: [1, 1, 1] })
+    const projector = new Projector(Matrix.Identity(), Math.PI / 8, 3)
     const items = [
-        {
-            draw: (projection: Matrix) => drawer.lightingPoint(projection, cube1, light, camera.position()),
-        },
-        {
-            draw: (projection: Matrix) => drawer.lightingPoint(projection, cube2, light, camera.position()),
-        },
-        {
-            draw: (projection: Matrix) => drawer.lightingPoint(projection, cube3, light, camera.position()),
-        },
+        // { draw: (projection: Matrix) => drawer.lightingPoint(projection, cube1, light, camera.position()), },
+        // { draw: (projection: Matrix) => drawer.lightingPoint(projection, cube2, light, camera.position()), },
+        // { draw: (projection: Matrix) => drawer.lightingPoint(projection, cube3, light, camera.position()), },
+        { draw: (projection: Matrix) => drawer.lightingProjector(projection, cube1, projector, camera.position()), },
+        { draw: (projection: Matrix) => drawer.lightingProjector(projection, cube2, projector, camera.position()), },
+        { draw: (projection: Matrix) => drawer.lightingProjector(projection, cube3, projector, camera.position()), },
         {
             // mesh: cameraCube,
             draw: (projection: Matrix) => {
@@ -105,7 +112,15 @@ downloadImages({}).then(images => {
                 drawer.simple(projection, cameraView);
             },
             layers: Layers.Debug,
-
+        },
+        {
+            draw: (projection: Matrix) => {
+                Matrix.Multiply(projector.transform, Matrix.Identity(), cameraView.transform);
+                // drawer.simple(projection, cameraView);
+                Matrix.Multiply(projector.transform, projector.projection.inverse(), cameraView.transform);
+                drawer.simple(projection, cameraView);
+            },
+            // layers: Layers.Debug,
         },
         {
             draw: (projection: Matrix) => drawer.sprite(projection, light, [0.5, 0.5, 0])
@@ -150,6 +165,7 @@ downloadImages({}).then(images => {
         light[0] = cubePos[0] + 1 * Math.cos(time / 2);
         light[1] = cubePos[1] + 0.5 * Math.cos(time / 2);
         light[2] = cubePos[2] + 1 * Math.sin(time / 2);
+        projector.transform = Matrix.LookAt(light, cube3.transform.position(), [0, 1, 0]);
         if (keyboard.totalPressed > 0) {
             const [dx, dy, dz] = moveDirection(dt)
             camera.multiply(Matrix.Move(dx, dy, dz));

@@ -91,7 +91,46 @@ export const lightingPoint = (gl: WebGL2RenderingContext) => {
     }
 }
 
+import lightingProjectorVert from "./lighting_projector.vert";
+import lightingProjectorFrag from "./lighting_projector.frag";
+
+export const lightingProjector = (gl: WebGL2RenderingContext) => {
+    const { program, uniforms, attributes } = new ProgramWrapper(
+        gl,
+        { vertex: lightingProjectorVert, fragment: lightingProjectorFrag },
+        {
+            transform: "u_transform", projection: "u_projection",
+            view: "u_viewPosition",
+            diffuseColor: "mat.diffuseColor",
+            specularColor: "mat.specularColor",
+            specular: "mat.specular",
+            projectorTransform: "u_projector.transform",
+            projectorAngle: "u_projector.angle",
+        },
+        { position: "a_position" }
+    )
+    return (projection: Matrix, model: Model, projector: Projector, viewPos: Vector<3>) => {
+        gl.useProgram(program);
+
+        gl.uniformMatrix4fv(uniforms.transform, false, model.transform.m);
+        gl.uniformMatrix4fv(uniforms.projection, false, projection.m);
+        gl.uniformMatrix4fv(uniforms.projectorTransform, false, projector.transform.m);
+        gl.uniform1f(uniforms.projectorAngle, projector.angle);
+        gl.uniform3f(uniforms.view, viewPos[0], viewPos[1], viewPos[2]);
+
+        gl.uniform4f(uniforms.diffuseColor, model.material.diffuseColor[0], model.material.diffuseColor[1], model.material.diffuseColor[2], 1);
+        gl.uniform4f(uniforms.specularColor, model.material.specularColor[0], model.material.specularColor[1], model.material.specularColor[2], 1);
+        gl.uniform1f(uniforms.specular, model.material.specular);
+        gl.bindVertexArray(model.vao);
+
+        gl.drawElements(gl.TRIANGLES, model.indices.length, gl.UNSIGNED_SHORT, 0);
+        gl.bindVertexArray(null);
+        gl.useProgram(null);
+    }
+}
+
 import spriteVert from "./sprite.vert"
+import { Projector } from "./main"
 
 export const sprite = (gl: WebGL2RenderingContext) => {
     const { program, uniforms, attributes } = new ProgramWrapper(
