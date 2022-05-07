@@ -96,7 +96,6 @@ function loadShader(gl: WebGL2RenderingContext, type: GLenum, source: string) {
 
     // Обрабатываем ошибки
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        gl.deleteShader(shader);
         throw new Error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
     }
 

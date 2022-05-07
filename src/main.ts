@@ -6,7 +6,7 @@ import { Matrix, Vector } from "./geometry"
 import { Model } from "./model"
 import * as Drawers from "./drawers"
 import { Keyboard } from "./input"
-
+import testTextureUrl from "./test_texture.png"
 type UnwrapMakerFunctions<T> = {
     [K in keyof T]: T[K] extends (...args: any) => any ? ReturnType<T[K]> : unknown
 }
@@ -15,6 +15,7 @@ enum Layers {
     Main = 1,
     Debug = 2,
     All = 255,
+    Special = 256,
 }
 
 export class Projector {
@@ -26,7 +27,51 @@ export class Projector {
     ) { }
 }
 
-downloadImages({}).then(images => {
+function shadowsTest(gl: WebGL2RenderingContext) {
+    const depthTexture = gl.createTexture();
+    const depthTextureSize = 512;
+    const shader = Drawers.shadowMap(gl);
+    gl.bindTexture(gl.TEXTURE_2D, depthTexture);
+    gl.texImage2D(
+        gl.TEXTURE_2D,      // target
+        0,                  // mip level
+        gl.DEPTH_COMPONENT32F, // internal format
+        depthTextureSize,   // width
+        depthTextureSize,   // height
+        0,                  // border
+        gl.DEPTH_COMPONENT, // format
+        gl.FLOAT,           // type
+        null);              // data
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    const depthFramebuffer = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, depthFramebuffer);
+    gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,       // target
+        gl.DEPTH_ATTACHMENT,  // attachment point
+        gl.TEXTURE_2D,        // texture target
+        depthTexture,         // texture
+        0);                   // mip level
+    return {
+        texture: depthTexture,
+        updator: (projector: Projector, items: Model[]) => {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, depthFramebuffer);
+            gl.viewport(0, 0, depthTextureSize, depthTextureSize);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            const p = Matrix.Multiply(projector.projection, projector.transform.inverse())
+            items.forEach(model => {
+                shader(p, model)
+            })
+            // now draw scene to the canvas projecting the depth texture into the scene
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        }
+    }
+}
+
+downloadImages({ test: testTextureUrl }).then(images => {
     // const styleSheet = document.querySelector("style")!.sheet!
 
     const canvas = document.querySelector("canvas")!
@@ -39,7 +84,13 @@ downloadImages({}).then(images => {
     gl.enable(gl.CULL_FACE);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
 
-    const drawer = mapRecord(Drawers, maker => maker(gl)) as UnwrapMakerFunctions<typeof Drawers>;
+    const drawer = mapRecord(Drawers, maker => {
+        try {
+            return maker(gl);
+        } catch (err: any) {
+            throw new Error(`Failed init Drawer.${maker.name}: ${err}`);
+        }
+    }) as UnwrapMakerFunctions<typeof Drawers>;
     const keyboard = new Keyboard({
         "KeyW": "forward",
         "KeyS": "backward",
@@ -75,9 +126,9 @@ downloadImages({}).then(images => {
         specularColor: [1, 1, 1],
         specular: 100,
     });
-    cube1.transform.multiply(Matrix.Move(1.5, 0.5, -2));
-    cube2.transform.multiply(Matrix.Move(1.5, 0.5, 2));
-    cube3.transform.multiply(Matrix.Move(1.5, 0.5, 0));
+    cube1.transform.multiply(Matrix.Move(1, -0.5, 0));
+    cube2.transform.multiply(Matrix.Move(5, 0.5, 0));
+    cube3.transform.multiply(Matrix.Move(3, 0.5, 0));
     const textures = new TexturesManager(gl, images)
     // const windows = new WindowsManager(HTML.CreateElement("div", (el) => document.body.appendChild(el)), new StyleSheetTree(styleSheet))
     // windows.CreateInfoWindow("Shadow demo", HTML.CreateElement("article", HTML.SetText("TODO")))
@@ -97,13 +148,14 @@ downloadImages({}).then(images => {
     const light: [number, number, number] = [1.5, 3, -2];
     const cameraView = Model.Cube(gl, 2, { diffuseColor: [0, 0, 0], specular: 1, specularColor: [0, 0, 0], debugColor: [1, 1, 1] })
     const projector = new Projector(Matrix.Identity(), Math.PI / 8, 3)
+    const shadowsT = shadowsTest(gl);
     const items = [
         // { draw: (projection: Matrix) => drawer.lightingPoint(projection, cube1, light, camera.position()), },
         // { draw: (projection: Matrix) => drawer.lightingPoint(projection, cube2, light, camera.position()), },
         // { draw: (projection: Matrix) => drawer.lightingPoint(projection, cube3, light, camera.position()), },
-        { draw: (projection: Matrix) => drawer.lightingProjector(projection, cube1, projector, camera.position()), },
-        { draw: (projection: Matrix) => drawer.lightingProjector(projection, cube2, projector, camera.position()), },
-        { draw: (projection: Matrix) => drawer.lightingProjector(projection, cube3, projector, camera.position()), },
+        { draw: (projection: Matrix) => drawer.lightingProjector(projection, cube1, projector, camera.position(), 10), },
+        { draw: (projection: Matrix) => drawer.lightingProjector(projection, cube2, projector, camera.position(), 10), },
+        { draw: (projection: Matrix) => drawer.lightingProjector(projection, cube3, projector, camera.position(), 10), },
         {
             // mesh: cameraCube,
             draw: (projection: Matrix) => {
@@ -124,6 +176,12 @@ downloadImages({}).then(images => {
         },
         {
             draw: (projection: Matrix) => drawer.sprite(projection, light, [0.5, 0.5, 0])
+        },
+        {
+            draw: () => {
+                drawer.shadowMapView(10);
+            },
+            layers: Layers.Special,
         }
     ]
     const viewports: {
@@ -136,7 +194,7 @@ downloadImages({}).then(images => {
                 viewport: [0, 0, halfWidth, halfHeight],
                 projection: projectionPerspective,
                 camera: cameraUpDown,
-                layers: Layers.All,
+                layers: Layers.Special,
             },
             {
                 viewport: [halfWidth, 0, halfWidth, halfHeight],
@@ -161,11 +219,11 @@ downloadImages({}).then(images => {
         const dt = (currentTick - lastTick) / 1000
         time += dt;
         lastTick = currentTick
-        const cubePos = cube3.transform.position();
+        const cubePos = cube1.transform.position();
         light[0] = cubePos[0] + 1 * Math.cos(time / 2);
         light[1] = cubePos[1] + 0.5 * Math.cos(time / 2);
         light[2] = cubePos[2] + 1 * Math.sin(time / 2);
-        projector.transform = Matrix.LookAt(light, cube3.transform.position(), [0, 1, 0]);
+        projector.transform = Matrix.LookAt(light, cube2.transform.position(), [0, 1, 0]);
         if (keyboard.totalPressed > 0) {
             const [dx, dy, dz] = moveDirection(dt)
             camera.multiply(Matrix.Move(dx, dy, dz));
@@ -178,6 +236,9 @@ downloadImages({}).then(images => {
         // .multiply(Matrix.RotateY(3 * dt))
         // .multiply(Matrix.RotateZ(dt))
 
+        shadowsT.updator(projector, [cube1, cube2, cube3]);
+        gl.activeTexture(gl.TEXTURE10);
+        gl.bindTexture(gl.TEXTURE_2D, shadowsT.texture);
         gl.clearColor(0.1, 0.1, 0.1, 1.0)
         gl.clearDepth(1.0)
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
@@ -189,6 +250,8 @@ downloadImages({}).then(images => {
                     item.draw(projection)
             })
         })
+        gl.activeTexture(gl.TEXTURE10);
+        gl.bindTexture(gl.TEXTURE_2D, null);
         frameId = requestAnimationFrame(draw)
     }
     frameId = requestAnimationFrame(draw)

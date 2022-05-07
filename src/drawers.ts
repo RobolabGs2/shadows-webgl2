@@ -106,21 +106,26 @@ export const lightingProjector = (gl: WebGL2RenderingContext) => {
             specular: "mat.specular",
             projectorTransform: "u_projector.transform",
             projectorAngle: "u_projector.angle",
+            projectorProjection: "u_projector.projection",
+            shadowMap: "shadowMap",
         },
         { position: "a_position" }
     )
-    return (projection: Matrix, model: Model, projector: Projector, viewPos: Vector<3>) => {
+    return (projection: Matrix, model: Model, projector: Projector, viewPos: Vector<3>, shadowMap: number) => {
         gl.useProgram(program);
 
         gl.uniformMatrix4fv(uniforms.transform, false, model.transform.m);
         gl.uniformMatrix4fv(uniforms.projection, false, projection.m);
         gl.uniformMatrix4fv(uniforms.projectorTransform, false, projector.transform.m);
+        gl.uniformMatrix4fv(uniforms.projectorProjection, false, projector.projection.m);
         gl.uniform1f(uniforms.projectorAngle, projector.angle);
         gl.uniform3f(uniforms.view, viewPos[0], viewPos[1], viewPos[2]);
 
         gl.uniform4f(uniforms.diffuseColor, model.material.diffuseColor[0], model.material.diffuseColor[1], model.material.diffuseColor[2], 1);
         gl.uniform4f(uniforms.specularColor, model.material.specularColor[0], model.material.specularColor[1], model.material.specularColor[2], 1);
         gl.uniform1f(uniforms.specular, model.material.specular);
+
+        gl.uniform1i(uniforms.shadowMap, shadowMap);
         gl.bindVertexArray(model.vao);
 
         gl.drawElements(gl.TRIANGLES, model.indices.length, gl.UNSIGNED_SHORT, 0);
@@ -157,4 +162,120 @@ export const sprite = (gl: WebGL2RenderingContext) => {
         gl.drawArrays(gl.POINTS, 0, 1);
         gl.useProgram(null);
     }
+}
+
+import shadowMapVert from "./shadow_map.vert";
+import shadowMapFrag from "./shadow_map.frag";
+
+export const shadowMap = (gl: WebGL2RenderingContext) => {
+    const { program, uniforms, attributes } = new ProgramWrapper(
+        gl,
+        { vertex: shadowMapVert, fragment: shadowMapFrag },
+        {
+            transform: "u_transform", projection: "u_projection"
+        },
+        { position: "a_position" }
+    )
+    return (projection: Matrix, model: Model) => {
+        gl.useProgram(program);
+
+        gl.uniformMatrix4fv(uniforms.transform, false, model.transform.m);
+        gl.uniformMatrix4fv(uniforms.projection, false, projection.m);
+        gl.bindVertexArray(model.vao);
+
+        gl.drawElements(gl.TRIANGLES, model.indices.length, gl.UNSIGNED_SHORT, 0);
+        gl.bindVertexArray(null);
+        gl.useProgram(null);
+    }
+}
+
+export const texture = (gl: WebGL2RenderingContext) => {
+    const vs = `#version 300 es
+  in vec2 position;
+  out vec2 v_texcoord;
+  void main() {
+    gl_Position = vec4(position, 0, 1);
+    v_texcoord = position.xy * 0.5 + 0.5;
+    v_texcoord.y = 1. - v_texcoord.y;
+  }`;
+    const fs = `#version 300 es
+  precision mediump float;
+  in vec2 v_texcoord;
+  uniform sampler2D tex;
+  out vec4 FragColor;
+  void main() {
+    FragColor = texture(tex, v_texcoord);
+  }`;
+    const programInfo = new ProgramWrapper(gl, { vertex: vs, fragment: fs }, { texture: "tex" }, { position: "position" });
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        -1, -1,
+        1, -1,
+        -1, 1,
+        -1, 1,
+        1, -1,
+        1, 1,
+    ]), gl.STATIC_DRAW);
+    const postitonPosition = gl.getAttribLocation(programInfo.program, "position");
+    gl.enableVertexAttribArray(postitonPosition);
+    gl.vertexAttribPointer(postitonPosition, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    gl.bindVertexArray(null);
+
+    return (texture: number) => {
+        gl.useProgram(programInfo.program);
+        gl.uniform1i(programInfo.uniforms.texture, texture);
+        gl.bindVertexArray(vao);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindVertexArray(null);
+        gl.useProgram(null);
+    };
+}
+
+export const shadowMapView = (gl: WebGL2RenderingContext) => {
+    const vs = `#version 300 es
+  in vec2 position;
+  out vec2 v_texcoord;
+  void main() {
+    gl_Position = vec4(position, 0, 1);
+    v_texcoord = position.xy * 0.5 + 0.5;
+    v_texcoord.y = 1. - v_texcoord.y;
+  }`;
+    const fs = `#version 300 es
+  precision mediump float;
+  in vec2 v_texcoord;
+  uniform sampler2D tex;
+  out vec4 FragColor;
+  void main() {
+    float depthValue = 1.-texture(tex, v_texcoord).r;
+    FragColor = vec4(depthValue, depthValue, depthValue, 1.);
+  }`;
+    const programInfo = new ProgramWrapper(gl, { vertex: vs, fragment: fs }, { texture: "tex" }, { position: "position" });
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+        -1, -1,
+        1, -1,
+        -1, 1,
+        -1, 1,
+        1, -1,
+        1, 1,
+    ]), gl.STATIC_DRAW);
+    const postitonPosition = gl.getAttribLocation(programInfo.program, "position");
+    gl.enableVertexAttribArray(postitonPosition);
+    gl.vertexAttribPointer(postitonPosition, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    gl.bindVertexArray(null);
+
+    return (texture: number) => {
+        gl.useProgram(programInfo.program);
+        gl.uniform1i(programInfo.uniforms.texture, texture);
+        gl.bindVertexArray(vao);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindVertexArray(null);
+        gl.useProgram(null);
+    };
 }
