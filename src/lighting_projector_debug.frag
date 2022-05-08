@@ -33,7 +33,7 @@ void main() {
     vec3 shadowMapCoord = v_shadowMapCoord.xyz / v_shadowMapCoord.w;
     float depth = shadowMapCoord.z;
     bool inRange = shadowMapCoord.x >= -1.0 && shadowMapCoord.x <= 1.0 &&
-        shadowMapCoord.y >= -1.0 && shadowMapCoord.y <= 1.0 && depth >= -1.0 && depth <= 1.0;
+        shadowMapCoord.y >= -1.0 && shadowMapCoord.y <= 1.0 && depth < 1.;
     vec2 shadowCoords = (shadowMapCoord.xy + vec2(1, 1)) / 2.;
     float maxDepth = texture(shadowMap, shadowCoords).r;
     // bool inShadow = (depth+1.0)/2. >= maxDepth;
@@ -44,6 +44,8 @@ void main() {
     float light = inLight * max(0.0, dot(normal, surfaceToLightDirection)) / (l * l);
     float specular = inLight * pow(max(0.0, dot(normal, halfVector)), mat.specular);
 
-    vec3 color = ((inRange && !inShadow) ? (mat.diffuseColor.rgb * light + mat.specularColor.rgb * specular) : vec3(0, 0, 0)) + mat.diffuseColor.rgb * 0.05;
+    // vec3 color = (mat.diffuseColor.rgb * light + mat.specularColor.rgb * specular)* float(!inShadow)+mat.diffuseColor.rgb * 0.05;
+    // vec3 color = vec3(inShadow, inRange, 1.0-maxDepth);//pow(0.4, depth));
+    vec3 color = vec3(maxDepth, depth - maxDepth, 0)*float(inRange);//pow(0.4, depth));
     FragColor = vec4(color, mat.diffuseColor.a);
 }

@@ -79,7 +79,7 @@ downloadImages({ test: testTextureUrl }).then(images => {
     canvas.height = canvas.clientHeight
     document.body.appendChild(canvas)
     const gl = canvas.getContext("webgl2")!
-    gl.enable(gl.BLEND);
+    // gl.enable(gl.BLEND);
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
@@ -111,24 +111,38 @@ downloadImages({ test: testTextureUrl }).then(images => {
         const { turnDown, turnLeft, turnRight, turnUp } = keyboard.keys;
         return Vector.Normilize([+turnUp - +turnDown, +turnRight - +turnLeft, 0], length)
     }
-    const cube1 = Model.Cube(gl, 1, {
-        diffuseColor: [0, 1, 0],
-        specularColor: [1, 1, 1],
-        specular: 100,
-    });
-    const cube2 = Model.Cube(gl, 1, {
-        diffuseColor: [0, 0, 1],
-        specularColor: [1, 1, 1],
-        specular: 100,
-    });
-    const cube3 = Model.Cube(gl, 1, {
-        diffuseColor: [1, 0, 0],
-        specularColor: [1, 1, 1],
-        specular: 100,
-    });
-    cube1.transform.multiply(Matrix.Move(1, -0.5, 0));
-    cube2.transform.multiply(Matrix.Move(5, 0.5, 0));
-    cube3.transform.multiply(Matrix.Move(3, 0.5, 0));
+    const cubes = [
+        Model.Cube(gl, 10, {
+            diffuseColor: [0.8, 0.8, 0.8],
+            specularColor: [1, 1, 1],
+            specular: 100,
+        }),
+        Model.Cube(gl, 1, {
+            diffuseColor: [0, 1, 0],
+            specularColor: [1, 1, 1],
+            specular: 100,
+        }),
+        Model.Cube(gl, 1, {
+            diffuseColor: [0, 0, 1],
+            specularColor: [1, 1, 1],
+            specular: 100,
+        }),
+        Model.Cube(gl, 1, {
+            diffuseColor: [1, 0, 0],
+            specularColor: [1, 1, 1],
+            specular: 100,
+        }),
+        Model.Cube(gl, 10, {
+            diffuseColor: [0.8, 0.8, 0.8],
+            specularColor: [1, 1, 1],
+            specular: 100,
+        }),
+    ]
+    cubes[0].transform.multiply(Matrix.Move(2, -7, 0));
+    cubes[1].transform.multiply(Matrix.Move(1, -0.5, 0));
+    cubes[2].transform.multiply(Matrix.Move(5, 0.5, 0));
+    cubes[3].transform.multiply(Matrix.Move(3, 0.5, 0));
+    cubes[4].transform.multiply(Matrix.Move(7+7, 0.5, 0));
     const textures = new TexturesManager(gl, images)
     // const windows = new WindowsManager(HTML.CreateElement("div", (el) => document.body.appendChild(el)), new StyleSheetTree(styleSheet))
     // windows.CreateInfoWindow("Shadow demo", HTML.CreateElement("article", HTML.SetText("TODO")))
@@ -141,27 +155,27 @@ downloadImages({ test: testTextureUrl }).then(images => {
     const ortographic = Matrix.Ortographic(-ortoWidth, ortoWidth, -ortoWidth / aspect, ortoWidth / aspect, 1000, -1000);
     const projectionPerspective = Matrix.Perspective(Math.PI / 4, aspect, 0.1, 15);
     let time = 0;
-    const camera = Matrix.Move(-3.5, 2.5, 0).multiply(Matrix.RotateY(-Math.PI / 2)).multiply(Matrix.RotateX(-Math.PI / 6));
+    // const camera = Matrix.Move(-3.5, 2.5, 0).multiply(Matrix.RotateY(-Math.PI / 2)).multiply(Matrix.RotateX(-Math.PI / 6));
+    const camera = Matrix.Move(-4.5, 0.5, -4).multiply(Matrix.RotateY(5*Math.PI / 4));
     const cameraUpDown = Matrix.LookAt([0, 10, 0], [0, 0, 0], [0, 0, -1])
     const cameraCube = Model.Camera(gl, 0.1, [1, 1, 1]);
     cameraCube.transform = camera;
     const light: [number, number, number] = [1.5, 3, -2];
-    const cameraView = Model.Cube(gl, 2, { diffuseColor: [0, 0, 0], specular: 1, specularColor: [0, 0, 0], debugColor: [1, 1, 1] })
-    const projector = new Projector(Matrix.Identity(), Math.PI / 8, 3)
+    const cameraView = Model.DebugCube(gl);
+    const projector = new Projector(Matrix.Identity(), Math.PI / 2, 25)
     const shadowsT = shadowsTest(gl);
     const items = [
         // { draw: (projection: Matrix) => drawer.lightingPoint(projection, cube1, light, camera.position()), },
         // { draw: (projection: Matrix) => drawer.lightingPoint(projection, cube2, light, camera.position()), },
         // { draw: (projection: Matrix) => drawer.lightingPoint(projection, cube3, light, camera.position()), },
-        { draw: (projection: Matrix) => drawer.lightingProjector(projection, cube1, projector, camera.position(), 10), },
-        { draw: (projection: Matrix) => drawer.lightingProjector(projection, cube2, projector, camera.position(), 10), },
-        { draw: (projection: Matrix) => drawer.lightingProjector(projection, cube3, projector, camera.position(), 10), },
+        ...cubes.map(cube => ({ draw: (projection: Matrix) => drawer.lightingProjector(projection, cube, projector, camera.position(), 10), layers: Layers.Main })),
+        ...cubes.map(cube => ({ draw: (projection: Matrix) => drawer.lightingProjectorDebug(projection, cube, projector, camera.position(), 10), layers: Layers.Debug })),
         {
             // mesh: cameraCube,
             draw: (projection: Matrix) => {
-                drawer.simple(projection, cameraCube);
+                drawer.simple(projection, cameraCube, false, true);
                 Matrix.Multiply(camera, projectionPerspective.inverse(), cameraView.transform);
-                drawer.simple(projection, cameraView);
+                drawer.simple(projection, cameraView, false, true);
             },
             layers: Layers.Debug,
         },
@@ -170,16 +184,17 @@ downloadImages({ test: testTextureUrl }).then(images => {
                 Matrix.Multiply(projector.transform, Matrix.Identity(), cameraView.transform);
                 // drawer.simple(projection, cameraView);
                 Matrix.Multiply(projector.transform, projector.projection.inverse(), cameraView.transform);
-                drawer.simple(projection, cameraView);
+                drawer.simple(projection, cameraView, false, true);
             },
-            // layers: Layers.Debug,
+            layers: Layers.Debug,
         },
         {
-            draw: (projection: Matrix) => drawer.sprite(projection, light, [0.5, 0.5, 0])
+            draw: (projection: Matrix) => drawer.sprite(projection, light, [0.5, 0.5, 0]),
+            layers: Layers.All,
         },
         {
             draw: () => {
-                drawer.shadowMapView(10);
+                drawer.texture(10);
             },
             layers: Layers.Special,
         }
@@ -206,24 +221,30 @@ downloadImages({ test: testTextureUrl }).then(images => {
                 viewport: [0, halfHeight, halfWidth, halfHeight],
                 projection: ortographic,
                 camera: cameraUpDown,
-                layers: Layers.All,
+                layers: Layers.Debug,
             },
+            // {
+            //     viewport: [halfWidth, halfHeight, halfWidth, halfHeight],
+            //     projection: ortographic,
+            //     camera: Matrix.Identity(),
+            //     layers: Layers.All,
+            // },
             {
                 viewport: [halfWidth, halfHeight, halfWidth, halfHeight],
-                projection: ortographic,
-                camera: Matrix.Identity(),
-                layers: Layers.All,
+                projection: projectionPerspective,
+                camera: camera,
+                layers: Layers.Debug,
             },
         ]
     const draw = (currentTick: number) => {
         const dt = (currentTick - lastTick) / 1000
         time += dt;
         lastTick = currentTick
-        const cubePos = cube1.transform.position();
+        const cubePos = cubes[1].transform.position();
         light[0] = cubePos[0] + 1 * Math.cos(time / 2);
         light[1] = cubePos[1] + 0.5 * Math.cos(time / 2);
         light[2] = cubePos[2] + 1 * Math.sin(time / 2);
-        projector.transform = Matrix.LookAt(light, cube2.transform.position(), [0, 1, 0]);
+        projector.transform = Matrix.LookAt(light, cubes[2].transform.position(), [0, 1, 0]);
         if (keyboard.totalPressed > 0) {
             const [dx, dy, dz] = moveDirection(dt)
             camera.multiply(Matrix.Move(dx, dy, dz));
@@ -231,12 +252,8 @@ downloadImages({ test: testTextureUrl }).then(images => {
             camera.multiply(Matrix.RotateX(rx).multiply(Matrix.RotateY(ry)))
             console.log(camera.position())
         }
-        cube1.transform
-        // .multiply(Matrix.RotateX(dt))
-        // .multiply(Matrix.RotateY(3 * dt))
-        // .multiply(Matrix.RotateZ(dt))
 
-        shadowsT.updator(projector, [cube1, cube2, cube3]);
+        shadowsT.updator(projector, cubes);
         gl.activeTexture(gl.TEXTURE10);
         gl.bindTexture(gl.TEXTURE_2D, shadowsT.texture);
         gl.clearColor(0.1, 0.1, 0.1, 1.0)

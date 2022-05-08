@@ -14,18 +14,21 @@ export const simple = (gl: WebGL2RenderingContext) => {
         { color: "u_color", transform: "u_transform", projection: "u_projection" },
         { position: "a_position" }
     )
-    return (projection: Matrix, model: Model) => {
+    return (projection: Matrix, model: Model, fill = true, stroke = false) => {
         gl.useProgram(program);
         const { diffuseColor: [r, g, b], debugColor: [dr, dg, db] = [r, g, b] } = model.material
-        gl.uniform4f(uniforms.color, r, g, b, 1);
         gl.uniformMatrix4fv(uniforms.transform, false, model.transform.m);
         gl.uniformMatrix4fv(uniforms.projection, false, projection.m);
 
         gl.bindVertexArray(model.vao);
-
-        gl.drawElements(gl.TRIANGLES, model.indices.length, gl.UNSIGNED_SHORT, 0);
-        gl.uniform4f(uniforms.color, dr, dg, db, 1);
-        gl.drawElements(gl.LINE_STRIP, model.indices.length, gl.UNSIGNED_SHORT, 0);
+        if (fill) {
+            gl.uniform4f(uniforms.color, r, g, b, 1);
+            gl.drawElements(gl.TRIANGLES, model.indices.length, gl.UNSIGNED_SHORT, 0);
+        }
+        if (stroke) {
+            gl.uniform4f(uniforms.color, dr, dg, db, 1);
+            gl.drawElements(gl.LINES, model.indices.length, gl.UNSIGNED_SHORT, 0);
+        }
         gl.bindVertexArray(null);
         gl.useProgram(null);
     }
@@ -134,6 +137,49 @@ export const lightingProjector = (gl: WebGL2RenderingContext) => {
     }
 }
 
+import lightingProjectorDebugFrag from "./lighting_projector_debug.frag";
+
+export const lightingProjectorDebug = (gl: WebGL2RenderingContext) => {
+    const { program, uniforms, attributes } = new ProgramWrapper(
+        gl,
+        { vertex: lightingProjectorVert, fragment: lightingProjectorDebugFrag },
+        {
+            transform: "u_transform", projection: "u_projection",
+            view: "u_viewPosition",
+            diffuseColor: "mat.diffuseColor",
+            specularColor: "mat.specularColor",
+            specular: "mat.specular",
+            projectorTransform: "u_projector.transform",
+            projectorAngle: "u_projector.angle",
+            projectorProjection: "u_projector.projection",
+            shadowMap: "shadowMap",
+        },
+        { position: "a_position" }
+    )
+    return (projection: Matrix, model: Model, projector: Projector, viewPos: Vector<3>, shadowMap: number) => {
+        gl.useProgram(program);
+
+        gl.uniformMatrix4fv(uniforms.transform, false, model.transform.m);
+        gl.uniformMatrix4fv(uniforms.projection, false, projection.m);
+        gl.uniformMatrix4fv(uniforms.projectorTransform, false, projector.transform.m);
+        gl.uniformMatrix4fv(uniforms.projectorProjection, false, projector.projection.m);
+        gl.uniform1f(uniforms.projectorAngle, projector.angle);
+        gl.uniform3f(uniforms.view, viewPos[0], viewPos[1], viewPos[2]);
+
+        gl.uniform4f(uniforms.diffuseColor, model.material.diffuseColor[0], model.material.diffuseColor[1], model.material.diffuseColor[2], 1);
+        gl.uniform4f(uniforms.specularColor, model.material.specularColor[0], model.material.specularColor[1], model.material.specularColor[2], 1);
+        gl.uniform1f(uniforms.specular, model.material.specular);
+
+        gl.uniform1i(uniforms.shadowMap, shadowMap);
+        gl.bindVertexArray(model.vao);
+
+        gl.drawElements(gl.TRIANGLES, model.indices.length, gl.UNSIGNED_SHORT, 0);
+        gl.bindVertexArray(null);
+        gl.useProgram(null);
+    }
+}
+
+
 import spriteVert from "./sprite.vert"
 import { Projector } from "./main"
 
@@ -196,7 +242,7 @@ export const texture = (gl: WebGL2RenderingContext) => {
   void main() {
     gl_Position = vec4(position, 0, 1);
     v_texcoord = position.xy * 0.5 + 0.5;
-    v_texcoord.y = 1. - v_texcoord.y;
+    v_texcoord.y = v_texcoord.y;
   }`;
     const fs = `#version 300 es
   precision mediump float;
@@ -241,7 +287,7 @@ export const shadowMapView = (gl: WebGL2RenderingContext) => {
   void main() {
     gl_Position = vec4(position, 0, 1);
     v_texcoord = position.xy * 0.5 + 0.5;
-    v_texcoord.y = 1. - v_texcoord.y;
+    v_texcoord.y = v_texcoord.y;
   }`;
     const fs = `#version 300 es
   precision mediump float;
