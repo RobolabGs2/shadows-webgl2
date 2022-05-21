@@ -56,9 +56,23 @@ export function downloadImages<T extends string>(urlsMap: Record<T, string>): Pr
     );
 }
 
+function downloadFile(url: string) {
+    return fetch(url).then(res => res.text());
+}
+
+export function downloadFiles<T extends string>(urlsMap: Record<T, string>): Promise<Record<T, string>> {
+    const urls = Object.entries<string>(urlsMap);
+    return Promise.all(urls.map(([_, url]) => url).map(downloadFile)).then(images =>
+        Object.fromEntries(images.map((file, i) => ([urls[i][0], file]))) as Record<T, string>
+    );
+}
+
+export function downloadResources<I extends string, F extends string>(images: Record<I, string>, files: Record<F, string>) {
+    return Promise.all([downloadImages(images), downloadFiles(files)]).then(([images, files]) => ({images, files}));
+}
 
 function Copy<T>(c: T): T {
-	return JSON.parse(JSON.stringify(c)) as T;
+    return JSON.parse(JSON.stringify(c)) as T;
 }
 
 export function loadSettingsFromURL<T extends Record<string, any>>(defaults: T): T {

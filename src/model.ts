@@ -211,4 +211,60 @@ export class Model {
             debugColor: color,
         })
     }
+    static fromObj(gl: WebGL2RenderingContext, obj: string, transform: Matrix) {
+        const lines = obj.split(/\r\n/g);
+        type Point = [number, number, number];
+        const v = new Array<Point>();
+        const vn = new Array<Point>();
+        const vt = new Array<Vector<2>>();
+
+        const vertexes = new Array<Point>();
+        const normals = new Array<Point>();
+        const uniqueVertexes = new Map<string, number>();
+        function getVertexIndex(tuple: string): number {
+            const cachedValue = uniqueVertexes.get(tuple);
+            if (cachedValue !== undefined)
+                return cachedValue;
+            const [vi, vti, vni] = tuple.split('/');
+            vertexes.push(v[+vi - 1]);
+            normals.push(vn[+vni - 1]);
+            const index = uniqueVertexes.size;
+            uniqueVertexes.set(tuple, index);
+            return index;
+        }
+        const triangles = new Array<Point>();
+        for (const line of lines) {
+            if (line === '') continue;
+
+            const [n, x, y, z, ...tail] = line.trim().split(/ +/g);
+            switch (n) {
+                case 'v':
+                    v.push([+x, +y, +z]);
+                    break;
+                case 'vn':
+                    vn.push([+x, +y, +z]);
+                    break;
+                case 'vt':
+                    vt.push([+x, +y]);
+                    break;
+                case 'f':
+                    triangles.push([
+                        getVertexIndex(x),
+                        getVertexIndex(y),
+                        getVertexIndex(z),
+                    ]);
+                    if (tail.length > 0) {
+                        triangles.push([
+                            getVertexIndex(x),
+                            getVertexIndex(z),
+                            getVertexIndex(tail[0]),
+                        ]);
+                    }
+                    break; // todo tail
+            }
+        }
+        return new Model(gl, vertexes, triangles, {
+            diffuseColor: [1, 1, 1], specular: 100, specularColor: [1, 1, 1], debugColor: [0, 0, 1]
+        }, transform, normals.flat());
+    }
 }

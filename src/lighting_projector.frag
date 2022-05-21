@@ -41,9 +41,9 @@ void main() {
 
     float directionAngel = dot(surfaceToLightDirection, mat3(u_projector.transform) * vec3(0, 0, 1));
     float inLight = smoothstep(cos(u_projector.angle / 2.), cos(0.), directionAngel);
-    float light = inLight * max(0.0, dot(normal, surfaceToLightDirection)) / (l * l);
+    float light = inLight * max(0.0, dot(normal, surfaceToLightDirection)) * 10. / (l * l);
     float specular = inLight * pow(max(0.0, dot(normal, halfVector)), mat.specular);
 
-    vec3 color = ((inRange && !inShadow) ? (mat.diffuseColor.rgb * light + mat.specularColor.rgb * specular) : vec3(0, 0, 0)) + mat.diffuseColor.rgb * 0.05;
+    vec3 color = ((inRange && !inShadow) ? (mat.diffuseColor.rgb * light + mat.specularColor.rgb * specular) : vec3(0, 0, 0)) + mat.diffuseColor.rgb * 0.09;
     FragColor = vec4(color, mat.diffuseColor.a);
 }
