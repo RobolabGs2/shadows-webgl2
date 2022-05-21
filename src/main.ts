@@ -30,7 +30,7 @@ export class Projector {
 
 function shadowsTest(gl: WebGL2RenderingContext) {
     const depthTexture = gl.createTexture();
-    const depthTextureSize = 512;
+    const depthTextureSize = 1024;
     const shader = Drawers.shadowMap(gl);
     gl.bindTexture(gl.TEXTURE_2D, depthTexture);
     gl.texImage2D(
@@ -56,6 +56,14 @@ function shadowsTest(gl: WebGL2RenderingContext) {
         gl.TEXTURE_2D,        // texture target
         depthTexture,         // texture
         0);                   // mip level
+
+    const sampler = gl.createSampler()!;
+    gl.bindSampler(10, sampler);
+    gl.samplerParameteri(sampler, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+    gl.samplerParameteri(sampler, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.samplerParameteri(sampler, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    // gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    // gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return {
         texture: depthTexture,
         updator: (projector: Projector, items: Model[]) => {
@@ -99,7 +107,7 @@ downloadResources({ test: testTextureUrl }, { skull: './skull.obj' })
             "KeyA": "left",
             "KeyD": "right",
             "Space": "up",
-            "AltLeft": "down",
+            "KeyV": "down",
             "KeyF": "turnDown",
             "KeyR": "turnUp",
             "KeyQ": "turnRight",
@@ -159,7 +167,7 @@ downloadResources({ test: testTextureUrl }, { skull: './skull.obj' })
         let frameId = -1;
         const halfWidth = canvas.width / 2;
         const halfHeight = canvas.height / 2;
-        const aspect = halfWidth / halfHeight;
+        const aspect = halfWidth / (halfHeight); // TODO 
         const ortoWidth = 10
         const ortographic = Matrix.Ortographic(-ortoWidth, ortoWidth, -ortoWidth / aspect, ortoWidth / aspect, 10000, -100000);
         const projectionPerspective = Matrix.Perspective(Math.PI / 4, aspect, 0.1, 1500);
@@ -171,7 +179,7 @@ downloadResources({ test: testTextureUrl }, { skull: './skull.obj' })
         cameraCube.transform = camera;
         const light: [number, number, number] = [1.5, 3, -2];
         const cameraView = Model.DebugCube(gl);
-        const projector = new Projector(Matrix.Identity(), Math.PI / 2, 25)
+        const projector = new Projector(Matrix.Identity(), Math.PI / 2, 1000)
         const shadowsT = shadowsTest(gl);
         const items = [
             // { draw: (projection: Matrix) => drawer.lightingPoint(projection, cube1, light, camera.position()), },
@@ -210,7 +218,7 @@ downloadResources({ test: testTextureUrl }, { skull: './skull.obj' })
             }
         ]
 
-        const viewportsPresets: Record<'debug' | 'half', {
+        const viewportsPresets: Record<'debug' | 'half' | 'full', {
             viewport: [number, number, number, number],
             projection: Matrix,
             camera: Matrix,
@@ -261,7 +269,15 @@ downloadResources({ test: testTextureUrl }, { skull: './skull.obj' })
                     camera: camera,
                     layers: Layers.Debug,
                 },
-            ]
+            ],
+            full: [
+                {
+                    viewport: [0, 0, 2 * halfWidth, 2 * halfHeight],
+                    projection: projectionPerspective,
+                    camera: camera,
+                    layers: Layers.Main,
+                },
+            ],
         }
 
         const viewports: {
@@ -269,7 +285,7 @@ downloadResources({ test: testTextureUrl }, { skull: './skull.obj' })
             projection: Matrix,
             camera: Matrix,
             layers: Layers,
-        }[] = viewportsPresets.half;
+        }[] = viewportsPresets.full;
         const draw = (currentTick: number) => {
             const dt = (currentTick - lastTick) / 1000
             time += dt;
