@@ -1,270 +1,107 @@
 import { Matrix, Vector } from "./geometry";
+import { mapRecord } from "./utils";
+import { Mesh } from "./mesh";
+import { Transform, TransformMatrixes } from "./transform";
 
 export type Material = {
     diffuseColor: Vector<3>;
     specularColor: Vector<3>;
     specular: number;
     debugColor?: Vector<3>;
+    useTexture?: boolean;
 }
 
 export class Model {
-    public vertexes: Float32Array
-    public indices: Uint16Array
-    public vao: WebGLVertexArrayObject
     constructor(
-        gl: WebGL2RenderingContext,
-        vertexes: [number, number, number][] | Float32Array,
-        triangles: [number, number, number][] | Uint16Array,
         public material: Material,
-        public transform: Matrix = Matrix.Identity(),
-        normals?: number[]
+        public transform: Transform,
+    ) { }
+}
+
+export class Sprite {
+    constructor(
+        readonly transform: Transform,
+        readonly color: [number, number, number, number?],
+        readonly size: number,
+    ) { }
+}
+
+export class ModelsFactory<M extends string, Layer extends number> {
+    readonly models: Record<M, Model[]>;
+    readonly types: M[];
+    constructor(
+        public meshes: Record<M, Mesh>,
+        public drawers: Record<M, { layers: Layer, draw: (projection: Matrix, camera: Matrix, mesh: Mesh, models: Model[]) => void }[]>,
     ) {
-        if (vertexes instanceof Float32Array) {
-            this.vertexes = vertexes;
-        } else {
-            this.vertexes = new Float32Array(vertexes.length * 4).fill(1);
-            for (let i = 0; i < vertexes.length; i++)
-                for (let axis = 0; axis < 3; axis++)
-                    this.vertexes[i * 4 + axis] = vertexes[i][axis];
-        }
-        if (triangles instanceof Uint16Array) {
-            this.indices = triangles;
-        } else {
-            this.indices = new Uint16Array(triangles.flatMap(x => x));
-        }
-        this.vao = gl.createVertexArray()!;
-
-        gl.bindVertexArray(this.vao);
-        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-        gl.bufferData(gl.ARRAY_BUFFER, this.vertexes, gl.STATIC_DRAW);
-        gl.enableVertexAttribArray(0);
-        gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.indices, gl.STATIC_DRAW);
-
-        if (normals) {
-            gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
-            gl.enableVertexAttribArray(1);
-            gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
-        }
-        gl.bindBuffer(gl.ARRAY_BUFFER, null);
-        gl.bindVertexArray(null);
+        this.models = mapRecord(meshes, () => new Array<Model>());
+        this.types = Object.keys(meshes) as M[];
     }
-    static Cube(gl: WebGL2RenderingContext, a: number = 1, material: Material): Model {
-        const h = a / 2;
-        const vertexes = [
-            [1, 1, -1],
-            [1, 1, 1],
-            [1, -1, 1],
-            [1, -1, -1],
-
-            [-1, 1, 1],
-            [-1, 1, -1],
-            [-1, -1, -1],
-            [-1, -1, 1],
-
-            [-1, 1, 1],
-            [1, 1, 1],
-            [1, 1, -1],
-            [-1, 1, -1],
-
-            [-1, -1, -1],
-            [1, -1, -1],
-            [1, -1, 1],
-            [-1, -1, 1],
-
-            [1, 1, 1],
-            [-1, 1, 1],
-            [-1, -1, 1],
-            [1, -1, 1],
-
-            [-1, 1, -1],
-            [1, 1, -1],
-            [1, -1, -1],
-            [-1, -1, -1],
-        ].map(coords => coords.map(c => c * h) as [number, number, number]);
-        const normals = [
-            [1, 0, 0],
-            [1, 0, 0],
-            [1, 0, 0],
-            [1, 0, 0],
-
-            [-1, 0, 0],
-            [-1, 0, 0],
-            [-1, 0, 0],
-            [-1, 0, 0],
-
-            [0, 1, 0],
-            [0, 1, 0],
-            [0, 1, 0],
-            [0, 1, 0],
-
-            [0, -1, 0],
-            [0, -1, 0],
-            [0, -1, 0],
-            [0, -1, 0],
-
-            [0, 0, 1],
-            [0, 0, 1],
-            [0, 0, 1],
-            [0, 0, 1],
-
-            [0, 0, -1],
-            [0, 0, -1],
-            [0, 0, -1],
-            [0, 0, -1],
-        ]
-        const triangles: [number, number, number][] = [
-            [0, 1, 2],
-            [0, 2, 3],
-            [4, 5, 6],
-            [4, 6, 7],
-            [8, 9, 10],
-            [8, 10, 11],
-            [12, 13, 14],
-            [12, 14, 15],
-            [16, 17, 18],
-            [16, 18, 19],
-            [20, 21, 22],
-            [20, 22, 23],
-        ]
-        return new Model(gl, vertexes, triangles, material, Matrix.Identity(), normals.flat())
+    add(type: M, material: Material, transform: {
+        x?: number; y?: number; z?: number;
+        angleX?: number; angleY?: number; angleZ?: number;
+        scale?: number;
+        parent?: Transform,
+    } = {}) {
+        const {
+            x = 0, y = 0, z = 0,
+            angleX = 0, angleY = 0, angleZ = 0,
+            scale = 1, parent,
+        } = transform;
+        const model = new Model(material, new TransformMatrixes(
+            Matrix.Move(x, y, z),
+            Matrix.RotateX(angleX).multiply(Matrix.RotateY(angleY)).multiply(Matrix.RotateZ(angleZ)),
+            Matrix.Scale(scale),
+            parent)
+        );
+        this.models[type].push(model);
+        return model;
     }
-    static Camera(gl: WebGL2RenderingContext, scale: number = 1, color: Vector<3>): Model {
-        const positions = [
-            -1, -1, 1,  // cube vertices
-            1, -1, 1,
-            -1, 1, 1,
-            1, 1, 1,
-            -1, -1, 3,
-            1, -1, 3,
-            -1, 1, 3,
-            1, 1, 3,
-            0, 0, 1,  // cone tip
-        ];
-        const indices = [
-            0, 1, 1, 3, 3, 2, 2, 0, // cube indices
-            4, 5, 5, 7, 7, 6, 6, 4,
-            0, 4, 1, 5, 3, 7, 2, 6,
-        ];
-        // add cone segments
-        const numSegments = 6;
-        const coneBaseIndex = positions.length / 3;
-        const coneTipIndex = coneBaseIndex - 1;
-        for (let i = 0; i < numSegments; ++i) {
-            const u = i / numSegments;
-            const angle = u * Math.PI * 2;
-            const x = Math.cos(angle);
-            const y = Math.sin(angle);
-            positions.push(x, y, 0);
-            // line from tip to edge
-            indices.push(coneTipIndex, coneBaseIndex + i);
-            // line from point on edge to next point on edge
-            indices.push(coneBaseIndex + i, coneBaseIndex + (i + 1) % numSegments);
-        }
-        positions.forEach((v, ndx) => {
-            positions[ndx] *= scale;
-        });
-        const vertexes4D = new Float32Array(positions.length / 3 * 4).fill(1);
-        for (let i = 0; i < positions.length / 3; i++) {
-            vertexes4D[i * 4 + 0] = positions[i * 3 + 0];
-            vertexes4D[i * 4 + 1] = positions[i * 3 + 1];
-            vertexes4D[i * 4 + 2] = positions[i * 3 + 2];
-        }
-        return new Model(gl, vertexes4D, new Uint16Array(indices), {
-            diffuseColor: [0, 0, 0],
-            specular: 0,
-            specularColor: [0, 0, 0],
-            debugColor: color,
+    draw(projection: Matrix, camera: Matrix, layer: Layer) {
+        this.types.forEach(type => {
+            this.drawers[type]
+                .filter(({ layers }) => layers & layer)
+                .forEach(({ draw }) => {
+                    draw(projection, camera, this.meshes[type], this.models[type]);
+                })
         })
     }
-    static DebugCube(gl: WebGL2RenderingContext, scale: number = 1, color: Vector<3> = [1, 1, 1]): Model {
-        const positions = [
-            -1, -1, -1,  // cube vertices
-            1, -1, -1,
-            -1, 1, -1,
-            1, 1, -1,
-            -1, -1, 1,
-            1, -1, 1,
-            -1, 1, 1,
-            1, 1, 1,
-        ];
-        const indices = [
-            0, 1, 1, 3, 3, 2, 2, 0, // cube indices
-            4, 5, 5, 7, 7, 6, 6, 4,
-            0, 4, 1, 5, 3, 7, 2, 6,
-        ];
-        positions.forEach((v, ndx) => {
-            positions[ndx] *= scale;
-        });
-        const vertexes4D = new Float32Array(positions.length / 3 * 4).fill(1);
-        for (let i = 0; i < positions.length / 3; i++) {
-            vertexes4D[i * 4 + 0] = positions[i * 3 + 0];
-            vertexes4D[i * 4 + 1] = positions[i * 3 + 1];
-            vertexes4D[i * 4 + 2] = positions[i * 3 + 2];
+}
+
+export class DecoreManager<Layer extends number> {
+    constructor(
+        public drawers: {
+            'sprite': { layers: Layer, draw: (projection: Matrix, camera: Matrix, sprite: Sprite) => void }[],
         }
-        return new Model(gl, vertexes4D, new Uint16Array(indices), {
-            diffuseColor: color,
-            specular: 0,
-            specularColor: color,
-            debugColor: color,
-        })
+    ) {
     }
-    static fromObj(gl: WebGL2RenderingContext, obj: string, transform: Matrix) {
-        const lines = obj.split(/\r\n/g);
-        type Point = [number, number, number];
-        const v = new Array<Point>();
-        const vn = new Array<Point>();
-        const vt = new Array<Vector<2>>();
 
-        const vertexes = new Array<Point>();
-        const normals = new Array<Point>();
-        const uniqueVertexes = new Map<string, number>();
-        function getVertexIndex(tuple: string): number {
-            const cachedValue = uniqueVertexes.get(tuple);
-            if (cachedValue !== undefined)
-                return cachedValue;
-            const [vi, vti, vni] = tuple.split('/');
-            vertexes.push(v[+vi - 1]);
-            normals.push(vn[+vni - 1]);
-            const index = uniqueVertexes.size;
-            uniqueVertexes.set(tuple, index);
-            return index;
-        }
-        const triangles = new Array<Point>();
-        for (const line of lines) {
-            if (line === '') continue;
-
-            const [n, x, y, z, ...tail] = line.trim().split(/ +/g);
-            switch (n) {
-                case 'v':
-                    v.push([+x, +y, +z]);
-                    break;
-                case 'vn':
-                    vn.push([+x, +y, +z]);
-                    break;
-                case 'vt':
-                    vt.push([+x, +y]);
-                    break;
-                case 'f':
-                    triangles.push([
-                        getVertexIndex(x),
-                        getVertexIndex(y),
-                        getVertexIndex(z),
-                    ]);
-                    if (tail.length > 0) {
-                        triangles.push([
-                            getVertexIndex(x),
-                            getVertexIndex(z),
-                            getVertexIndex(tail[0]),
-                        ]);
-                    }
-                    break; // todo tail
-            }
-        }
-        return new Model(gl, vertexes, triangles, {
-            diffuseColor: [1, 1, 1], specular: 100, specularColor: [1, 1, 1], debugColor: [0, 0, 1]
-        }, transform, normals.flat());
+    readonly sprites = new Array<Sprite>();
+    addSprite(size: number, material: [number, number, number, number?], transform: {
+        x?: number; y?: number; z?: number;
+        parent?: Transform,
+    } = {}) {
+        const {
+            x = 0, y = 0, z = 0, parent,
+        } = transform;
+        const sprite = new Sprite(
+            new TransformMatrixes(Matrix.Move(x, y, z), Matrix.Identity(), Matrix.Identity(), parent),
+            material, size
+        );
+        this.sprites.push(sprite);
+        return sprite;
+    }
+    readonly custom = new Array<{ layers: Layer, draw: (projection: Matrix, camera: Matrix) => void }>();
+    addCustom(layer: Layer, drawer: (projection: Matrix, camera: Matrix) => void) {
+        return this.custom.push({ layers: layer, draw: drawer });
+    }
+    draw(projection: Matrix, camera: Matrix, layer: Layer) {
+        this.sprites.forEach(sprite => {
+            this.drawers.sprite
+                .filter(({ layers }) => layers & layer)
+                .forEach(({ draw }) => {
+                    draw(projection, camera, sprite);
+                })
+        })
+        this.custom.filter(({ layers }) => layers & layer).forEach(({ draw }) => draw(projection, camera));
     }
 }

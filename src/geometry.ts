@@ -84,7 +84,7 @@ export class Matrix {
         ])
     }
     static Perspective(fieldOfView: number, aspect: number, nearZ: number, farZ: number) {
-        const f = Math.tan(0.5*(Math.PI - fieldOfView));
+        const f = Math.tan(0.5 * (Math.PI - fieldOfView));
         const rangeInv = 1.0 / (nearZ - farZ);
         return new Matrix([
             f / aspect, 0, 0, 0,
@@ -181,8 +181,23 @@ export class Matrix {
     multiply(another: Matrix) {
         return Matrix.Multiply(this, another, this);
     }
+    multiplyLeft(another: Matrix) {
+        return Matrix.Multiply(another, this, this);
+    }
     position(): Vector<3> {
         return [this.m[12], this.m[13], this.m[14]];
+    }
+    multiplyVector(vector: Vector<4>) {
+        const result = [0, 0, 0, 0];
+        for (let i = 0; i < 4; i++) {
+            for (let k = 0; k < 4; k++) {
+                result[i] += this.m[k * 4 + i] * vector[k];
+            }
+        }
+        for (let i = 0; i < 3; i++)
+            result[i] /= result[3];
+        result.pop();
+        return result;
     }
     inverse(): Matrix {
         const m = this.m;

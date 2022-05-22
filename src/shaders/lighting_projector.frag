@@ -7,11 +7,13 @@ in vec3 v_normal;
 in vec3 v_surfaceToLight;
 in vec3 v_surfaceToView;
 in vec4 v_shadowMapCoord;
+in vec2 v_texcoord;
 
 struct Material {
     vec4 diffuseColor;
     vec4 specularColor;
     float specular;
+    bool hasTexture;
 };
 
 struct Projector {
@@ -23,6 +25,7 @@ struct Projector {
 uniform Material mat;
 uniform Projector u_projector;
 uniform sampler2DShadow shadowMap;
+uniform sampler2D textureSampler;
 
 out vec4 FragColor;
 void main() {
@@ -33,10 +36,7 @@ void main() {
     vec3 halfVector = normalize(surfaceToLightDirection + surfaceToViewDirection);
 
     vec3 shadowMapCoord = v_shadowMapCoord.xyz / v_shadowMapCoord.w;
-    float depth = shadowMapCoord.z;
-    bool inRange = shadowMapCoord.x >= -1.0 && shadowMapCoord.x <= 1.0 &&
-        shadowMapCoord.y >= -1.0 && shadowMapCoord.y <= 1.0 && depth >= -1.0 && depth <= 1.0;
-    vec3 shadowCoords = (shadowMapCoord.xyz + vec3(1, 1, depth)) / 2.;
+    vec3 shadowCoords = (shadowMapCoord.xyz + vec3(1, 1, shadowMapCoord.z)) / 2.;
     float inShadow = texture(shadowMap, shadowCoords);
 
     float directionAngel = dot(surfaceToLightDirection, mat3(u_projector.transform) * vec3(0, 0, 1));
@@ -44,6 +44,7 @@ void main() {
     float light = inLight * max(0.0, dot(normal, surfaceToLightDirection)) * 10. / (l * l);
     float specular = inLight * pow(max(0.0, dot(normal, halfVector)), mat.specular);
 
-    vec3 color = ((inRange) ? inShadow * (mat.diffuseColor.rgb * light + mat.specularColor.rgb * specular) : vec3(0, 0, 0)) + mat.diffuseColor.rgb * 0.09;
+    vec3 diffuseColor = float(!mat.hasTexture) * mat.diffuseColor.rgb + float(mat.hasTexture) * texture(textureSampler, v_texcoord).rgb;
+    vec3 color = inShadow * (diffuseColor * light + mat.specularColor.rgb * specular);
     FragColor = vec4(color, mat.diffuseColor.a);
 }
